@@ -35,6 +35,10 @@ interface TextObject extends BaseObject {
 
 interface ArrowObject extends BaseObject {
   type: 'arrow';
+  sourceId: string | null;
+  targetId: string | null;
+  sourceAnchor: 'top' | 'right' | 'bottom' | 'left' | null;
+  targetAnchor: 'top' | 'right' | 'bottom' | 'left' | null;
   endX: number;
   endY: number;
 }
@@ -64,6 +68,8 @@ export default function StickyNotesBoard() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedTool, setSelectedTool] = useState<ObjectType | null>(null);
   const [selectedColor, setSelectedColor] = useState<'yellow' | 'green' | 'pink' | 'blue'>('yellow');
+  const [arrowSource, setArrowSource] = useState<string | null>(null);
+  const [hoveredNote, setHoveredNote] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const editRef = useRef<HTMLDivElement>(null);
 
@@ -110,6 +116,82 @@ export default function StickyNotesBoard() {
     }
   };
 
+  const getAnchorPoint = (obj: StickyNote | TextObject, anchor: 'top' | 'right' | 'bottom' | 'left') => {
+    const centerX = obj.x + obj.width / 2;
+    const centerY = obj.y + obj.height / 2;
+    
+    switch (anchor) {
+      case 'top': return { x: centerX, y: obj.y };
+      case 'right': return { x: obj.x + obj.width, y: centerY };
+      case 'bottom': return { x: centerX, y: obj.y + obj.height };
+      case 'left': return { x: obj.x, y: centerY };
+    }
+  };
+
+  const findNearestAnchor = (x: number, y: number, noteId: string): 'top' | 'right' | 'bottom' | 'left' => {
+    const note = objects.find(o => o.id === noteId);
+    if (!note || (note.type !== 'sticky' && note.type !== 'text')) return 'top';
+    
+    const anchors: Array<'top' | 'right' | 'bottom' | 'left'> = ['top', 'right', 'bottom', 'left'];
+    let minDist = Infinity;
+    let nearest: 'top' | 'right' | 'bottom' | 'left' = 'top';
+    
+    anchors.forEach(anchor => {
+      const point = getAnchorPoint(note as StickyNote | TextObject, anchor);
+      const dist = Math.sqrt((point.x - x) ** 2 + (point.y - y) ** 2);
+      if (dist < minDist) {
+        minDist = dist;
+        nearest = anchor;
+      }
+    });
+    
+    return nearest;
+  };
+
+  const handleNoteClick = (e: React.MouseEvent, noteId: string) => {
+    if (selectedTool === 'arrow') {
+      e.stopPropagation();
+      
+      if (!arrowSource) {
+        // First click - set source
+        setArrowSource(noteId);
+      } else if (arrowSource !== noteId) {
+        // Second click - create arrow
+        const sourceNote = objects.find(o => o.id === arrowSource);
+        const targetNote = objects.find(o => o.id === noteId);
+        
+        if (sourceNote && targetNote && 
+            (sourceNote.type === 'sticky' || sourceNote.type === 'text') &&
+            (targetNote.type === 'sticky' || targetNote.type === 'text')) {
+          
+          const sourceAnchor = findNearestAnchor(targetNote.x, targetNote.y, arrowSource);
+          const targetAnchor = findNearestAnchor(sourceNote.x, sourceNote.y, noteId);
+          
+          const sourcePoint = getAnchorPoint(sourceNote as StickyNote | TextObject, sourceAnchor);
+          const targetPoint = getAnchorPoint(targetNote as StickyNote | TextObject, targetAnchor);
+          
+          const newArrow: ArrowObject = {
+            id: Date.now().toString(),
+            type: 'arrow',
+            x: sourcePoint.x,
+            y: sourcePoint.y,
+            endX: targetPoint.x,
+            endY: targetPoint.y,
+            sourceId: arrowSource,
+            targetId: noteId,
+            sourceAnchor,
+            targetAnchor
+          };
+          
+          saveToHistory([...objects, newArrow]);
+        }
+        
+        setArrowSource(null);
+        setSelectedTool(null);
+      }
+    }
+  };
+
   const createObject = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target !== canvasRef.current || !selectedTool) return;
 
@@ -130,6 +212,8 @@ export default function StickyNotesBoard() {
         width: 200,
         height: 150
       } as StickyNote;
+      saveToHistory([...objects, newObject]);
+      setSelectedTool(null);
     } else if (selectedTool === 'text') {
       newObject = {
         id: Date.now().toString(),
@@ -140,20 +224,10 @@ export default function StickyNotesBoard() {
         width: 200,
         height: 40
       } as TextObject;
-    } else {
-      // arrow
-      newObject = {
-        id: Date.now().toString(),
-        type: 'arrow',
-        x,
-        y,
-        endX: x + 100,
-        endY: y
-      } as ArrowObject;
+      saveToHistory([...objects, newObject]);
+      setSelectedTool(null);
     }
-
-    saveToHistory([...objects, newObject]);
-    setSelectedTool(null);
+    // Arrow creation handled by clicking notes
   };
 
   const handleMouseDown = (e: React.MouseEvent, objectId: string, action: 'drag' | 'resize' = 'drag') => {
@@ -178,6 +252,34 @@ export default function StickyNotesBoard() {
     }
   };
 
+  const updateArrowPositions = (updatedObjects: CanvasObject[]) => {
+    return updatedObjects.map(obj => {
+      if (obj.type === 'arrow') {
+        const arrow = obj as ArrowObject;
+        if (arrow.sourceId && arrow.targetId && arrow.sourceAnchor && arrow.targetAnchor) {
+          const sourceNote = updatedObjects.find(o => o.id === arrow.sourceId);
+          const targetNote = updatedObjects.find(o => o.id === arrow.targetId);
+          
+          if (sourceNote && targetNote && 
+              (sourceNote.type === 'sticky' || sourceNote.type === 'text') &&
+              (targetNote.type === 'sticky' || targetNote.type === 'text')) {
+            const sourcePoint = getAnchorPoint(sourceNote as StickyNote | TextObject, arrow.sourceAnchor);
+            const targetPoint = getAnchorPoint(targetNote as StickyNote | TextObject, arrow.targetAnchor);
+            
+            return {
+              ...arrow,
+              x: sourcePoint.x,
+              y: sourcePoint.y,
+              endX: targetPoint.x,
+              endY: targetPoint.y
+            };
+          }
+        }
+      }
+      return obj;
+    });
+  };
+
   const handleMouseMove = (e: React.MouseEvent) => {
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
@@ -191,7 +293,7 @@ export default function StickyNotesBoard() {
           ? { ...obj, x: mouseX - dragOffset.x, y: mouseY - dragOffset.y }
           : obj
       );
-      setObjects(newObjects);
+      setObjects(updateArrowPositions(newObjects));
     } else if (resizing) {
       const newObjects = objects.map(obj => {
         if (obj.id === resizing && (obj.type === 'sticky' || obj.type === 'text')) {
@@ -201,7 +303,7 @@ export default function StickyNotesBoard() {
         }
         return obj;
       });
-      setObjects(newObjects);
+      setObjects(updateArrowPositions(newObjects));
     }
   };
 
@@ -385,7 +487,14 @@ export default function StickyNotesBoard() {
             return (
               <Card
                 key={sticky.id}
-                onMouseDown={(e) => handleMouseDown(e, sticky.id, 'drag')}
+                onClick={(e) => handleNoteClick(e, sticky.id)}
+                onMouseDown={(e) => {
+                  if (selectedTool !== 'arrow') {
+                    handleMouseDown(e, sticky.id, 'drag');
+                  }
+                }}
+                onMouseEnter={() => setHoveredNote(sticky.id)}
+                onMouseLeave={() => setHoveredNote(null)}
                 onDoubleClick={(e) => {
                   e.stopPropagation();
                   setEditingId(sticky.id);
@@ -397,9 +506,11 @@ export default function StickyNotesBoard() {
                   width: sticky.width,
                   height: displayHeight,
                   backgroundColor: COLOR_PRESETS[sticky.color],
-                  cursor: dragging === sticky.id ? 'grabbing' : 'grab',
+                  cursor: selectedTool === 'arrow' ? 'pointer' : (dragging === sticky.id ? 'grabbing' : 'grab'),
                   boxShadow: 3,
                   borderRadius: 2,
+                  border: arrowSource === sticky.id ? '3px solid #1976d2' : 
+                          (hoveredNote === sticky.id && selectedTool === 'arrow' ? '2px dashed #1976d2' : 'none'),
                   '&:hover': {
                     boxShadow: 6
                   }
@@ -464,6 +575,32 @@ export default function StickyNotesBoard() {
                       }
                     }}
                   />
+                  
+                  {/* Anchor points - visible when arrow tool is active */}
+                  {selectedTool === 'arrow' && (
+                    <>
+                      {(['top', 'right', 'bottom', 'left'] as const).map(anchor => {
+                        const point = getAnchorPoint(sticky, anchor);
+                        return (
+                          <Box
+                            key={anchor}
+                            sx={{
+                              position: 'absolute',
+                              left: point.x - sticky.x - 6,
+                              top: point.y - sticky.y - 6,
+                              width: 12,
+                              height: 12,
+                              borderRadius: '50%',
+                              backgroundColor: '#1976d2',
+                              border: '2px solid white',
+                              pointerEvents: 'none',
+                              zIndex: 100
+                            }}
+                          />
+                        );
+                      })}
+                    </>
+                  )}
                 </CardContent>
               </Card>
             );
@@ -475,7 +612,14 @@ export default function StickyNotesBoard() {
             return (
               <Box
                 key={text.id}
-                onMouseDown={(e) => handleMouseDown(e, text.id, 'drag')}
+                onClick={(e) => handleNoteClick(e, text.id)}
+                onMouseDown={(e) => {
+                  if (selectedTool !== 'arrow') {
+                    handleMouseDown(e, text.id, 'drag');
+                  }
+                }}
+                onMouseEnter={() => setHoveredNote(text.id)}
+                onMouseLeave={() => setHoveredNote(null)}
                 onDoubleClick={(e) => {
                   e.stopPropagation();
                   setEditingId(text.id);
@@ -486,11 +630,13 @@ export default function StickyNotesBoard() {
                   top: text.y,
                   width: text.width,
                   height: displayHeight,
-                  cursor: dragging === text.id ? 'grabbing' : 'grab',
+                  cursor: selectedTool === 'arrow' ? 'pointer' : (dragging === text.id ? 'grabbing' : 'grab'),
                   padding: 1,
-                  border: editingId === text.id ? '2px solid #1976d2' : '2px solid transparent',
+                  border: arrowSource === text.id ? '3px solid #1976d2' : 
+                          (editingId === text.id ? '2px solid #1976d2' : 
+                          (hoveredNote === text.id && selectedTool === 'arrow' ? '2px dashed #1976d2' : '2px solid transparent')),
                   '&:hover': {
-                    border: '2px solid #ccc'
+                    border: editingId === text.id ? '2px solid #1976d2' : '2px solid #ccc'
                   }
                 }}
               >
@@ -551,6 +697,32 @@ export default function StickyNotesBoard() {
                     }
                   }}
                 />
+                
+                {/* Anchor points - visible when arrow tool is active */}
+                {selectedTool === 'arrow' && (
+                  <>
+                    {(['top', 'right', 'bottom', 'left'] as const).map(anchor => {
+                      const point = getAnchorPoint(text, anchor);
+                      return (
+                        <Box
+                          key={anchor}
+                          sx={{
+                            position: 'absolute',
+                            left: point.x - text.x - 6,
+                            top: point.y - text.y - 6,
+                            width: 12,
+                            height: 12,
+                            borderRadius: '50%',
+                            backgroundColor: '#1976d2',
+                            border: '2px solid white',
+                            pointerEvents: 'none',
+                            zIndex: 100
+                          }}
+                        />
+                      );
+                    })}
+                  </>
+                )}
               </Box>
             );
           } else if (obj.type === 'arrow') {
@@ -597,5 +769,13 @@ export default function StickyNotesBoard() {
     </Box>
   );
 }
+
+
+
+
+
+
+
+
 
 
