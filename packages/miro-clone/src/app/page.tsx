@@ -433,13 +433,14 @@ export default function StickyNotesBoard() {
                         minHeight: 100,
                         whiteSpace: 'pre-wrap',
                         wordBreak: 'break-word',
-                        paddingTop: 4
+                        paddingTop: 4,
+                        color: '#000'
                       }}
                     >
                       {sticky.content}
                     </Box>
                   ) : (
-                    <Box sx={{ fontSize: '14px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', paddingTop: 4 }}>
+                    <Box sx={{ fontSize: '14px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', paddingTop: 4, color: '#000' }}>
                       {sticky.content}
                     </Box>
                   )}
@@ -519,13 +520,14 @@ export default function StickyNotesBoard() {
                       outline: 'none',
                       minHeight: 30,
                       whiteSpace: 'pre-wrap',
-                      wordBreak: 'break-word'
+                      wordBreak: 'break-word',
+                      color: '#000'
                     }}
                   >
                     {text.content}
                   </Box>
                 ) : (
-                  <Box sx={{ fontSize: '16px', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                  <Box sx={{ fontSize: '16px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: '#000' }}>
                     {text.content}
                   </Box>
                 )}
@@ -595,4 +597,5 @@ export default function StickyNotesBoard() {
     </Box>
   );
 }
+
 
