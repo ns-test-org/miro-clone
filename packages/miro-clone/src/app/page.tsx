@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { Card, CardContent, IconButton, TextField, Box } from '@mui/material';
+import { Card, CardContent, IconButton, TextField, Box, Drawer, List, ListItem, ListItemText, Button, Typography, Divider } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
+import HistoryIcon from '@mui/icons-material/History';
+import RestoreIcon from '@mui/icons-material/Restore';
 
 interface StickyNote {
   id: string;
@@ -12,6 +14,12 @@ interface StickyNote {
   color: string;
 }
 
+interface Snapshot {
+  id: string;
+  timestamp: number;
+  notes: StickyNote[];
+}
+
 const COLORS = ['#FFF59D', '#FFCCBC', '#B2DFDB', '#E1BEE7', '#C5CAE9', '#FFAB91'];
 
 export default function StickyNotesBoard() {
@@ -19,13 +27,21 @@ export default function StickyNotesBoard() {
   const [dragging, setDragging] = useState<string | null>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
+  const [editCount, setEditCount] = useState(0);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const canvasRef = useRef<HTMLDivElement>(null);
+  const EDITS_PER_SNAPSHOT = 5;
 
-  // Load notes from localStorage on mount
+  // Load notes and snapshots from localStorage on mount
   useEffect(() => {
     const saved = localStorage.getItem('stickyNotes');
     if (saved) {
       setNotes(JSON.parse(saved));
+    }
+    const savedSnapshots = localStorage.getItem('stickyNotesSnapshots');
+    if (savedSnapshots) {
+      setSnapshots(JSON.parse(savedSnapshots));
     }
   }, []);
 
@@ -35,6 +51,33 @@ export default function StickyNotesBoard() {
       localStorage.setItem('stickyNotes', JSON.stringify(notes));
     }
   }, [notes]);
+
+  // Save snapshots to localStorage whenever they change
+  useEffect(() => {
+    if (snapshots.length > 0) {
+      localStorage.setItem('stickyNotesSnapshots', JSON.stringify(snapshots));
+    }
+  }, [snapshots]);
+
+  // Create snapshot every N edits
+  const createSnapshot = () => {
+    const newSnapshot: Snapshot = {
+      id: Date.now().toString(),
+      timestamp: Date.now(),
+      notes: JSON.parse(JSON.stringify(notes)) // Deep copy
+    };
+    setSnapshots([newSnapshot, ...snapshots]);
+  };
+
+  // Track edits and create snapshots
+  const trackEdit = () => {
+    const newCount = editCount + 1;
+    setEditCount(newCount);
+    if (newCount >= EDITS_PER_SNAPSHOT) {
+      createSnapshot();
+      setEditCount(0);
+    }
+  };
 
   const createNote = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target === canvasRef.current) {
@@ -46,6 +89,7 @@ export default function StickyNotesBoard() {
         color: COLORS[Math.floor(Math.random() * COLORS.length)]
       };
       setNotes([...notes, newNote]);
+      trackEdit();
     }
   };
 
@@ -77,29 +121,135 @@ export default function StickyNotesBoard() {
 
   const deleteNote = (id: string) => {
     setNotes(notes.filter(note => note.id !== id));
+    trackEdit();
   };
 
   const updateContent = (id: string, content: string) => {
     setNotes(notes.map(note =>
       note.id === id ? { ...note, content } : note
     ));
+    trackEdit();
+  };
+
+  const restoreSnapshot = (snapshot: Snapshot) => {
+    setNotes(JSON.parse(JSON.stringify(snapshot.notes)));
+    setHistoryOpen(false);
+    setEditCount(0);
+  };
+
+  const formatTimestamp = (timestamp: number) => {
+    const date = new Date(timestamp);
+    return date.toLocaleString();
   };
 
   return (
-    <Box
-      ref={canvasRef}
-      onClick={createNote}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      sx={{
-        width: '100vw',
-        height: '100vh',
-        backgroundColor: '#f5f5f5',
-        position: 'relative',
-        overflow: 'hidden',
-        cursor: 'crosshair'
-      }}
-    >
+    <>
+      {/* History Button */}
+      <IconButton
+        onClick={() => setHistoryOpen(true)}
+        sx={{
+          position: 'fixed',
+          top: 16,
+          right: 16,
+          backgroundColor: 'white',
+          boxShadow: 2,
+          zIndex: 1000,
+          '&:hover': {
+            backgroundColor: '#f5f5f5'
+          }
+        }}
+      >
+        <HistoryIcon />
+      </IconButton>
+
+      {/* Edit Counter */}
+      <Box
+        sx={{
+          position: 'fixed',
+          top: 16,
+          left: 16,
+          backgroundColor: 'white',
+          padding: '8px 16px',
+          borderRadius: 1,
+          boxShadow: 2,
+          zIndex: 1000,
+          fontSize: '14px'
+        }}
+      >
+        Edits until snapshot: {EDITS_PER_SNAPSHOT - editCount}
+      </Box>
+
+      {/* History Drawer */}
+      <Drawer
+        anchor="right"
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+      >
+        <Box sx={{ width: 350, padding: 2 }}>
+          <Typography variant="h6" gutterBottom>
+            Version History
+          </Typography>
+          <Typography variant="body2" color="text.secondary" gutterBottom>
+            Snapshots are saved every {EDITS_PER_SNAPSHOT} edits
+          </Typography>
+          <Divider sx={{ my: 2 }} />
+          {snapshots.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              No snapshots yet. Make {EDITS_PER_SNAPSHOT} edits to create your first snapshot.
+            </Typography>
+          ) : (
+            <List>
+              {snapshots.map((snapshot, index) => (
+                <ListItem
+                  key={snapshot.id}
+                  sx={{
+                    flexDirection: 'column',
+                    alignItems: 'flex-start',
+                    border: '1px solid #e0e0e0',
+                    borderRadius: 1,
+                    mb: 1,
+                    '&:hover': {
+                      backgroundColor: '#f5f5f5'
+                    }
+                  }}
+                >
+                  <ListItemText
+                    primary={`Snapshot ${snapshots.length - index}`}
+                    secondary={formatTimestamp(snapshot.timestamp)}
+                  />
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                    {snapshot.notes.length} note{snapshot.notes.length !== 1 ? 's' : ''}
+                  </Typography>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<RestoreIcon />}
+                    onClick={() => restoreSnapshot(snapshot)}
+                    fullWidth
+                  >
+                    Restore
+                  </Button>
+                </ListItem>
+              ))}
+            </List>
+          )}
+        </Box>
+      </Drawer>
+
+      <Box
+        ref={canvasRef}
+        onClick={createNote}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        sx={{
+          width: '100vw',
+          height: '100vh',
+          backgroundColor: '#f5f5f5',
+          position: 'relative',
+          overflow: 'hidden',
+          cursor: 'crosshair'
+        }}
+      >
       {notes.map(note => (
         <Card
           key={note.id}
@@ -157,7 +307,15 @@ export default function StickyNotesBoard() {
           </CardContent>
         </Card>
       ))}
-    </Box>
+      </Box>
+    </>
   );
 }
+
+
+
+
+
+
+
 
