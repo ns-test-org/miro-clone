@@ -1,84 +1,163 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import { Card, CardContent, IconButton, TextField, Box } from '@mui/material';
+import DeleteIcon from '@mui/icons-material/Delete';
 
-const slogans = [
-  "Turn chats into apps",
-  "Prompt. Ship. Repeat.",
-  "Build anything from a chat",
-  "Ideas → Apps, instantly",
-  "From zero to MVP in minutes",
-  "Your cofounder in the command line",
-  "Draft, iterate, deploy",
-  "Ship faster than you can type",
-  "Design in text, deliver in code",
-  "Dream it. Prompt it. Run it.",
-  "Chat-native app building",
-  "From prompt to product",
-  "One prompt, infinite apps",
-  "Stop scaffolding. Start shipping.",
-  "Prototype at the speed of thought",
-  "Make conversations executable"
-];
+interface StickyNote {
+  id: string;
+  content: string;
+  x: number;
+  y: number;
+  color: string;
+}
 
-export default function Landing() {
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [isVisible, setIsVisible] = useState(true);
+const COLORS = ['#FFF59D', '#FFCCBC', '#B2DFDB', '#E1BEE7', '#C5CAE9', '#FFAB91'];
 
+export default function StickyNotesBoard() {
+  const [notes, setNotes] = useState<StickyNote[]>([]);
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
+
+  // Load notes from localStorage on mount
   useEffect(() => {
-    const interval = setInterval(() => {
-      setIsVisible(false);
-      setTimeout(() => {
-        setCurrentIndex((prev) => (prev + 1) % slogans.length);
-        setIsVisible(true);
-      }, 400);
-    }, 2800);
-
-    return () => clearInterval(interval);
+    const saved = localStorage.getItem('stickyNotes');
+    if (saved) {
+      setNotes(JSON.parse(saved));
+    }
   }, []);
 
+  // Save notes to localStorage whenever they change
+  useEffect(() => {
+    if (notes.length > 0) {
+      localStorage.setItem('stickyNotes', JSON.stringify(notes));
+    }
+  }, [notes]);
+
+  const createNote = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target === canvasRef.current) {
+      const newNote: StickyNote = {
+        id: Date.now().toString(),
+        content: 'Double click to edit',
+        x: e.clientX - 100,
+        y: e.clientY - 75,
+        color: COLORS[Math.floor(Math.random() * COLORS.length)]
+      };
+      setNotes([...notes, newNote]);
+    }
+  };
+
+  const handleMouseDown = (e: React.MouseEvent, noteId: string) => {
+    if (editingId === noteId) return;
+    setDragging(noteId);
+    const note = notes.find(n => n.id === noteId);
+    if (note) {
+      setDragOffset({
+        x: e.clientX - note.x,
+        y: e.clientY - note.y
+      });
+    }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (dragging) {
+      setNotes(notes.map(note =>
+        note.id === dragging
+          ? { ...note, x: e.clientX - dragOffset.x, y: e.clientY - dragOffset.y }
+          : note
+      ));
+    }
+  };
+
+  const handleMouseUp = () => {
+    setDragging(null);
+  };
+
+  const deleteNote = (id: string) => {
+    setNotes(notes.filter(note => note.id !== id));
+  };
+
+  const updateContent = (id: string, content: string) => {
+    setNotes(notes.map(note =>
+      note.id === id ? { ...note, content } : note
+    ));
+  };
+
   return (
-    <div className="relative h-[100dvh] w-full overflow-hidden bg-black text-white">
-      {/* Enhanced animated aurora background layers */}
-      <div className="absolute inset-0 bg-aurora-layer-1" />
-      <div className="absolute inset-0 bg-aurora-layer-2" />
-      <div className="absolute inset-0 bg-aurora-layer-3" />
-      
-      {/* Floating particles overlay */}
-      <div className="absolute inset-0 bg-particles" />
-      
-      {/* Main content - centered */}
-      <main className="relative z-10 h-full flex flex-col items-center justify-center px-6">
-        <h1 className="text-center text-[clamp(28px,6vw,64px)] font-medium tracking-tight mb-4">
-          Turn Chats into Apps
-        </h1>
-        
-        {/* Rotating slogans */}
-        <div className="mt-4 h-8 md:h-10 overflow-hidden flex items-center justify-center">
-          <span
-            className={`inline-block text-center text-[clamp(18px,3vw,32px)] font-light transition-all duration-[400ms] ease-in-out ${
-              isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2'
-            }`}
-          >
-            {slogans[currentIndex]}
-          </span>
-        </div>
-      </main>
-      
-      {/* Start Prompting arrow pointing left - bottom left */}
-      <div className="absolute left-6 md:left-8 bottom-[5%] z-20 flex items-center gap-3 arrow-point-left">
-        <div className="flex items-center gap-2 text-white/80 font-medium text-sm md:text-base">
-          <svg 
-            className="w-5 h-5 md:w-6 md:h-6 animate-bounce-horizontal" 
-            fill="none" 
-            viewBox="0 0 24 24" 
-            stroke="currentColor"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-          <span>Start prompting</span>
-        </div>
-      </div>
-    </div>
+    <Box
+      ref={canvasRef}
+      onClick={createNote}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      sx={{
+        width: '100vw',
+        height: '100vh',
+        backgroundColor: '#f5f5f5',
+        position: 'relative',
+        overflow: 'hidden',
+        cursor: 'crosshair'
+      }}
+    >
+      {notes.map(note => (
+        <Card
+          key={note.id}
+          onMouseDown={(e) => handleMouseDown(e, note.id)}
+          onDoubleClick={() => setEditingId(note.id)}
+          sx={{
+            position: 'absolute',
+            left: note.x,
+            top: note.y,
+            width: 200,
+            minHeight: 150,
+            backgroundColor: note.color,
+            cursor: dragging === note.id ? 'grabbing' : 'grab',
+            boxShadow: 3,
+            '&:hover': {
+              boxShadow: 6
+            }
+          }}
+        >
+          <CardContent>
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
+              <IconButton
+                size="small"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  deleteNote(note.id);
+                }}
+                sx={{ padding: 0.5 }}
+              >
+                <DeleteIcon fontSize="small" />
+              </IconButton>
+            </Box>
+            {editingId === note.id ? (
+              <TextField
+                autoFocus
+                multiline
+                fullWidth
+                value={note.content}
+                onChange={(e) => updateContent(note.id, e.target.value)}
+                onBlur={() => setEditingId(null)}
+                variant="standard"
+                InputProps={{ disableUnderline: true }}
+                sx={{
+                  '& .MuiInputBase-input': {
+                    fontSize: '14px',
+                    padding: 0
+                  }
+                }}
+              />
+            ) : (
+              <Box sx={{ fontSize: '14px', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                {note.content}
+              </Box>
+            )}
+          </CardContent>
+        </Card>
+      ))}
+    </Box>
   );
 }
+
