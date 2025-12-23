@@ -1,13 +1,15 @@
 'use client';
 
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { Card, CardContent, Box, Drawer, Button, ButtonGroup, Tooltip } from '@mui/material';
+import { Card, CardContent, Box, Drawer, Button, ButtonGroup, Tooltip, Paper, ToggleButton, ToggleButtonGroup } from '@mui/material';
 import StickyNote2Icon from '@mui/icons-material/StickyNote2';
 import TextFieldsIcon from '@mui/icons-material/TextFields';
 import TrendingFlatIcon from '@mui/icons-material/TrendingFlat';
 import DeleteIcon from '@mui/icons-material/Delete';
 import UndoIcon from '@mui/icons-material/Undo';
 import RedoIcon from '@mui/icons-material/Redo';
+import FormatBoldIcon from '@mui/icons-material/FormatBold';
+import FormatSizeIcon from '@mui/icons-material/FormatSize';
 
 type ObjectType = 'sticky' | 'text' | 'arrow';
 
@@ -24,6 +26,8 @@ interface StickyNote extends BaseObject {
   color: 'yellow' | 'green' | 'pink' | 'blue';
   width: number;
   height: number;
+  fontSize?: 'small' | 'medium' | 'large';
+  bold?: boolean;
 }
 
 interface TextObject extends BaseObject {
@@ -72,6 +76,7 @@ export default function StickyNotesBoard() {
   const [hoveredNote, setHoveredNote] = useState<string | null>(null);
   const [canvasName, setCanvasName] = useState('Untitled Canvas');
   const [editingCanvasName, setEditingCanvasName] = useState(false);
+  const [selectedNote, setSelectedNote] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const editRef = useRef<HTMLDivElement>(null);
   const canvasNameRef = useRef<HTMLInputElement>(null);
@@ -207,6 +212,7 @@ export default function StickyNotesBoard() {
 
   const createObject = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target !== canvasRef.current || !selectedTool) return;
+    setSelectedNote(null); // Deselect note when clicking canvas
 
     const rect = canvasRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -223,7 +229,9 @@ export default function StickyNotesBoard() {
         y,
         color: selectedColor,
         width: 200,
-        height: 150
+        height: 150,
+        fontSize: 'medium',
+        bold: false
       } as StickyNote;
       saveToHistory([...objects, newObject]);
       setSelectedTool(null);
@@ -345,6 +353,23 @@ export default function StickyNotesBoard() {
     if (editingId) {
       saveToHistory(objects);
       setEditingId(null);
+    }
+  };
+
+  const updateNoteStyle = (id: string, updates: Partial<StickyNote>) => {
+    const newObjects = objects.map(obj =>
+      obj.id === id && obj.type === 'sticky'
+        ? { ...obj, ...updates }
+        : obj
+    );
+    saveToHistory(newObjects);
+  };
+
+  const getFontSize = (size?: 'small' | 'medium' | 'large') => {
+    switch (size) {
+      case 'small': return '12px';
+      case 'large': return '18px';
+      default: return '14px';
     }
   };
 
@@ -561,37 +586,108 @@ export default function StickyNotesBoard() {
             const displayHeight = Math.max(sticky.height, autoHeight);
 
             return (
-              <Card
-                key={sticky.id}
-                onClick={(e) => handleNoteClick(e, sticky.id)}
-                onMouseDown={(e) => {
-                  if (selectedTool !== 'arrow') {
-                    handleMouseDown(e, sticky.id, 'drag');
-                  }
-                }}
-                onMouseEnter={() => setHoveredNote(sticky.id)}
-                onMouseLeave={() => setHoveredNote(null)}
-                onDoubleClick={(e) => {
-                  e.stopPropagation();
-                  setEditingId(sticky.id);
-                }}
-                sx={{
-                  position: 'absolute',
-                  left: sticky.x,
-                  top: sticky.y,
-                  width: sticky.width,
-                  height: displayHeight,
-                  backgroundColor: COLOR_PRESETS[sticky.color],
-                  cursor: selectedTool === 'arrow' ? 'pointer' : (dragging === sticky.id ? 'grabbing' : 'grab'),
-                  boxShadow: 3,
-                  borderRadius: 2,
-                  border: arrowSource === sticky.id ? '3px solid #1976d2' : 
-                          (hoveredNote === sticky.id && selectedTool === 'arrow' ? '2px dashed #1976d2' : 'none'),
-                  '&:hover': {
-                    boxShadow: 6
-                  }
-                }}
-              >
+              <>
+                {/* Formatting Panel */}
+                {selectedNote === sticky.id && (
+                  <Paper
+                    elevation={4}
+                    sx={{
+                      position: 'absolute',
+                      left: sticky.x,
+                      top: sticky.y - 60,
+                      zIndex: 1001,
+                      padding: 1,
+                      display: 'flex',
+                      gap: 1,
+                      alignItems: 'center',
+                      backgroundColor: 'white'
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {/* Text Size */}
+                    <ToggleButtonGroup
+                      value={sticky.fontSize || 'medium'}
+                      exclusive
+                      onChange={(e, newSize) => {
+                        if (newSize) updateNoteStyle(sticky.id, { fontSize: newSize });
+                      }}
+                      size="small"
+                    >
+                      <ToggleButton value="small">S</ToggleButton>
+                      <ToggleButton value="medium">M</ToggleButton>
+                      <ToggleButton value="large">L</ToggleButton>
+                    </ToggleButtonGroup>
+
+                    {/* Bold Toggle */}
+                    <ToggleButton
+                      value="bold"
+                      selected={sticky.bold || false}
+                      onChange={() => updateNoteStyle(sticky.id, { bold: !sticky.bold })}
+                      size="small"
+                    >
+                      <FormatBoldIcon fontSize="small" />
+                    </ToggleButton>
+
+                    {/* Color Picker */}
+                    <Box sx={{ display: 'flex', gap: 0.5 }}>
+                      {(Object.keys(COLOR_PRESETS) as Array<keyof typeof COLOR_PRESETS>).map(color => (
+                        <Box
+                          key={color}
+                          onClick={() => updateNoteStyle(sticky.id, { color })}
+                          sx={{
+                            width: 24,
+                            height: 24,
+                            backgroundColor: COLOR_PRESETS[color],
+                            borderRadius: 1,
+                            cursor: 'pointer',
+                            border: sticky.color === color ? '2px solid #1976d2' : '1px solid #ccc',
+                            '&:hover': {
+                              opacity: 0.8
+                            }
+                          }}
+                        />
+                      ))}
+                    </Box>
+                  </Paper>
+                )}
+
+                <Card
+                  key={sticky.id}
+                  onClick={(e) => {
+                    handleNoteClick(e, sticky.id);
+                    if (selectedTool !== 'arrow') {
+                      setSelectedNote(sticky.id);
+                    }
+                  }}
+                  onMouseDown={(e) => {
+                    if (selectedTool !== 'arrow') {
+                      handleMouseDown(e, sticky.id, 'drag');
+                    }
+                  }}
+                  onMouseEnter={() => setHoveredNote(sticky.id)}
+                  onMouseLeave={() => setHoveredNote(null)}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    setEditingId(sticky.id);
+                  }}
+                  sx={{
+                    position: 'absolute',
+                    left: sticky.x,
+                    top: sticky.y,
+                    width: sticky.width,
+                    height: displayHeight,
+                    backgroundColor: COLOR_PRESETS[sticky.color],
+                    cursor: selectedTool === 'arrow' ? 'pointer' : (dragging === sticky.id ? 'grabbing' : 'grab'),
+                    boxShadow: 3,
+                    borderRadius: 2,
+                    border: arrowSource === sticky.id ? '3px solid #1976d2' : 
+                            (selectedNote === sticky.id ? '2px solid #1976d2' :
+                            (hoveredNote === sticky.id && selectedTool === 'arrow' ? '2px dashed #1976d2' : 'none')),
+                    '&:hover': {
+                      boxShadow: 6
+                    }
+                  }}
+                >
                 <CardContent sx={{ height: '100%', position: 'relative', padding: 2 }}>
                   <Box sx={{ position: 'absolute', top: 8, right: 8, zIndex: 10 }}>
                     <Button
@@ -615,7 +711,8 @@ export default function StickyNotesBoard() {
                         if (e.key === 'Escape') commitEdit();
                       }}
                       sx={{
-                        fontSize: '14px',
+                        fontSize: getFontSize(sticky.fontSize),
+                        fontWeight: sticky.bold ? 'bold' : 'normal',
                         outline: 'none',
                         minHeight: 100,
                         whiteSpace: 'pre-wrap',
@@ -627,7 +724,14 @@ export default function StickyNotesBoard() {
                       {sticky.content}
                     </Box>
                   ) : (
-                    <Box sx={{ fontSize: '14px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', paddingTop: 4, color: '#000' }}>
+                    <Box sx={{ 
+                      fontSize: getFontSize(sticky.fontSize),
+                      fontWeight: sticky.bold ? 'bold' : 'normal',
+                      whiteSpace: 'pre-wrap', 
+                      wordBreak: 'break-word', 
+                      paddingTop: 4, 
+                      color: '#000' 
+                    }}>
                       {sticky.content}
                     </Box>
                   )}
@@ -679,6 +783,7 @@ export default function StickyNotesBoard() {
                   )}
                 </CardContent>
               </Card>
+              </>
             );
           } else if (obj.type === 'text') {
             const text = obj as TextObject;
@@ -879,6 +984,15 @@ export default function StickyNotesBoard() {
     </Box>
   );
 }
+
+
+
+
+
+
+
+
+
 
 
 
