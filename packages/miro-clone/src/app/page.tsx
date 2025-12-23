@@ -131,6 +131,53 @@ export default function StickyNotesBoard() {
     trackEdit();
   };
 
+  // Parse content for [[Note]] references
+  const parseReferences = (content: string) => {
+    const regex = /\[\[([^\]]+)\]\]/g;
+    const parts = [];
+    let lastIndex = 0;
+    let match;
+
+    while ((match = regex.exec(content)) !== null) {
+      // Add text before the match
+      if (match.index > lastIndex) {
+        parts.push({ type: 'text', content: content.slice(lastIndex, match.index) });
+      }
+      // Add the reference
+      parts.push({ type: 'reference', content: match[1] });
+      lastIndex = regex.lastIndex;
+    }
+    // Add remaining text
+    if (lastIndex < content.length) {
+      parts.push({ type: 'text', content: content.slice(lastIndex) });
+    }
+
+    return parts.length > 0 ? parts : [{ type: 'text', content }];
+  };
+
+  // Find note by content match
+  const findNoteByReference = (reference: string) => {
+    return notes.find(note => 
+      note.content.toLowerCase().includes(reference.toLowerCase())
+    );
+  };
+
+  // Scroll to and highlight a note
+  const scrollToNote = (noteId: string) => {
+    const note = notes.find(n => n.id === noteId);
+    if (note && canvasRef.current) {
+      // Briefly highlight the note
+      const element = document.getElementById(`note-${noteId}`);
+      if (element) {
+        element.style.transition = 'transform 0.3s ease';
+        element.style.transform = 'scale(1.1)';
+        setTimeout(() => {
+          element.style.transform = 'scale(1)';
+        }, 300);
+      }
+    }
+  };
+
   const restoreSnapshot = (snapshot: Snapshot) => {
     setNotes(JSON.parse(JSON.stringify(snapshot.notes)));
     setHistoryOpen(false);
@@ -253,6 +300,7 @@ export default function StickyNotesBoard() {
       {notes.map(note => (
         <Card
           key={note.id}
+          id={`note-${note.id}`}
           onMouseDown={(e) => handleMouseDown(e, note.id)}
           onDoubleClick={() => setEditingId(note.id)}
           sx={{
@@ -301,7 +349,35 @@ export default function StickyNotesBoard() {
               />
             ) : (
               <Box sx={{ fontSize: '14px', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                {note.content}
+                {parseReferences(note.content).map((part, index) => {
+                  if (part.type === 'reference') {
+                    const referencedNote = findNoteByReference(part.content);
+                    return (
+                      <Box
+                        key={index}
+                        component="span"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (referencedNote) {
+                            scrollToNote(referencedNote.id);
+                          }
+                        }}
+                        sx={{
+                          color: referencedNote ? '#1976d2' : '#999',
+                          textDecoration: referencedNote ? 'underline' : 'none',
+                          cursor: referencedNote ? 'pointer' : 'default',
+                          fontWeight: 500,
+                          '&:hover': referencedNote ? {
+                            color: '#1565c0'
+                          } : {}
+                        }}
+                      >
+                        [[{part.content}]]
+                      </Box>
+                    );
+                  }
+                  return <span key={index}>{part.content}</span>;
+                })}
               </Box>
             )}
           </CardContent>
@@ -311,6 +387,8 @@ export default function StickyNotesBoard() {
     </>
   );
 }
+
+
 
 
 
