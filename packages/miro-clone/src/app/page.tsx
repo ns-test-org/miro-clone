@@ -727,6 +727,42 @@ export default function StickyNotesBoard() {
             );
           } else if (obj.type === 'arrow') {
             const arrow = obj as ArrowObject;
+            
+            // Calculate bezier curve control points based on anchor positions
+            const dx = arrow.endX - arrow.x;
+            const dy = arrow.endY - arrow.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            // Offset control points based on source and target anchor directions
+            let cp1x = arrow.x;
+            let cp1y = arrow.y;
+            let cp2x = arrow.endX;
+            let cp2y = arrow.endY;
+            
+            const offset = Math.min(distance * 0.4, 100); // Dynamic offset based on distance
+            
+            if (arrow.sourceAnchor === 'right') {
+              cp1x += offset;
+            } else if (arrow.sourceAnchor === 'left') {
+              cp1x -= offset;
+            } else if (arrow.sourceAnchor === 'top') {
+              cp1y -= offset;
+            } else if (arrow.sourceAnchor === 'bottom') {
+              cp1y += offset;
+            }
+            
+            if (arrow.targetAnchor === 'right') {
+              cp2x += offset;
+            } else if (arrow.targetAnchor === 'left') {
+              cp2x -= offset;
+            } else if (arrow.targetAnchor === 'top') {
+              cp2y -= offset;
+            } else if (arrow.targetAnchor === 'bottom') {
+              cp2y += offset;
+            }
+            
+            const pathData = `M ${arrow.x} ${arrow.y} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${arrow.endX} ${arrow.endY}`;
+            
             return (
               <svg
                 key={arrow.id}
@@ -751,13 +787,11 @@ export default function StickyNotesBoard() {
                     <polygon points="0 0, 10 3, 0 6" fill="#333" />
                   </marker>
                 </defs>
-                <line
-                  x1={arrow.x}
-                  y1={arrow.y}
-                  x2={arrow.endX}
-                  y2={arrow.endY}
+                <path
+                  d={pathData}
                   stroke="#333"
                   strokeWidth="2"
+                  fill="none"
                   markerEnd={`url(#arrowhead-${arrow.id})`}
                 />
               </svg>
@@ -769,6 +803,7 @@ export default function StickyNotesBoard() {
     </Box>
   );
 }
+
 
 
 
