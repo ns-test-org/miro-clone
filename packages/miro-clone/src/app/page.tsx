@@ -70,10 +70,13 @@ export default function StickyNotesBoard() {
   const [selectedColor, setSelectedColor] = useState<'yellow' | 'green' | 'pink' | 'blue'>('yellow');
   const [arrowSource, setArrowSource] = useState<string | null>(null);
   const [hoveredNote, setHoveredNote] = useState<string | null>(null);
+  const [canvasName, setCanvasName] = useState('Untitled Canvas');
+  const [editingCanvasName, setEditingCanvasName] = useState(false);
   const canvasRef = useRef<HTMLDivElement>(null);
   const editRef = useRef<HTMLDivElement>(null);
+  const canvasNameRef = useRef<HTMLInputElement>(null);
 
-  // Load objects from localStorage on mount
+  // Load objects and canvas name from localStorage on mount
   useEffect(() => {
     const saved = localStorage.getItem('miroCloneObjects');
     if (saved) {
@@ -85,6 +88,11 @@ export default function StickyNotesBoard() {
       setHistory([{ objects: [] }]);
       setHistoryIndex(0);
     }
+    
+    const savedName = localStorage.getItem('miroCloneCanvasName');
+    if (savedName) {
+      setCanvasName(savedName);
+    }
   }, []);
 
   // Save objects to localStorage whenever they change
@@ -93,6 +101,11 @@ export default function StickyNotesBoard() {
       localStorage.setItem('miroCloneObjects', JSON.stringify(objects));
     }
   }, [objects, historyIndex]);
+
+  // Save canvas name to localStorage
+  useEffect(() => {
+    localStorage.setItem('miroCloneCanvasName', canvasName);
+  }, [canvasName]);
 
   const saveToHistory = useCallback((newObjects: CanvasObject[]) => {
     const newHistory = history.slice(0, historyIndex + 1);
@@ -357,7 +370,69 @@ export default function StickyNotesBoard() {
   };
 
   return (
-    <Box sx={{ display: 'flex', width: '100vw', height: '100vh', overflow: 'hidden' }}>
+    <Box sx={{ display: 'flex', width: '100vw', height: '100vh', overflow: 'hidden', position: 'relative' }}>
+      {/* Top Header Panel */}
+      <Box
+        sx={{
+          position: 'fixed',
+          top: 0,
+          left: DRAWER_WIDTH,
+          right: 0,
+          height: 60,
+          backgroundColor: 'white',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+          display: 'flex',
+          alignItems: 'center',
+          paddingX: 3,
+          gap: 3,
+          zIndex: 1000
+        }}
+      >
+        <Box sx={{ fontSize: '20px', fontWeight: 'bold', color: '#333' }}>
+          Miro Clone
+        </Box>
+        <Box sx={{ width: 2, height: 30, backgroundColor: '#ddd' }} />
+        {editingCanvasName ? (
+          <input
+            ref={canvasNameRef}
+            type="text"
+            value={canvasName}
+            onChange={(e) => setCanvasName(e.target.value)}
+            onBlur={() => setEditingCanvasName(false)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === 'Escape') {
+                setEditingCanvasName(false);
+              }
+            }}
+            autoFocus
+            style={{
+              fontSize: '18px',
+              border: '2px solid #1976d2',
+              borderRadius: '4px',
+              padding: '4px 8px',
+              outline: 'none',
+              minWidth: '200px'
+            }}
+          />
+        ) : (
+          <Box
+            onClick={() => setEditingCanvasName(true)}
+            sx={{
+              fontSize: '18px',
+              color: '#555',
+              cursor: 'pointer',
+              padding: '4px 8px',
+              borderRadius: '4px',
+              '&:hover': {
+                backgroundColor: '#f0f0f0'
+              }
+            }}
+          >
+            {canvasName}
+          </Box>
+        )}
+      </Box>
+
       {/* Left Toolbar */}
       <Drawer
         variant="permanent"
@@ -475,7 +550,8 @@ export default function StickyNotesBoard() {
           backgroundColor: '#f5f5f5',
           position: 'relative',
           overflow: 'auto',
-          cursor: selectedTool ? 'crosshair' : 'default'
+          cursor: selectedTool ? 'crosshair' : 'default',
+          marginTop: '60px'
         }}
       >
         {objects.map(obj => {
@@ -803,6 +879,11 @@ export default function StickyNotesBoard() {
     </Box>
   );
 }
+
+
+
+
+
 
 
 
