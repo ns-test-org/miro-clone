@@ -85,6 +85,14 @@ export default function StickyNotesBoard() {
     ));
   };
 
+  const handleEditStart = (noteId: string) => {
+    const note = notes.find(n => n.id === noteId);
+    if (note && note.content === 'Double click to edit') {
+      updateContent(noteId, '');
+    }
+    setEditingId(noteId);
+  };
+
   return (
     <Box
       ref={canvasRef}
@@ -104,7 +112,7 @@ export default function StickyNotesBoard() {
         <Card
           key={note.id}
           onMouseDown={(e) => handleMouseDown(e, note.id)}
-          onDoubleClick={() => setEditingId(note.id)}
+          onDoubleClick={() => handleEditStart(note.id)}
           sx={{
             position: 'absolute',
             left: note.x,
@@ -160,4 +168,6 @@ export default function StickyNotesBoard() {
     </Box>
   );
 }
+
+
 
