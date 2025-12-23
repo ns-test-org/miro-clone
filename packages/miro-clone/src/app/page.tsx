@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { Card, CardContent, IconButton, TextField, Box, Drawer, List, ListItem, ListItemText, Button, Typography, Divider } from '@mui/material';
+import { Card, CardContent, IconButton, TextField, Box, Drawer, List, ListItem, ListItemText, Button, Typography, Divider, Fab } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import HistoryIcon from '@mui/icons-material/History';
 import RestoreIcon from '@mui/icons-material/Restore';
+import TimelineIcon from '@mui/icons-material/Timeline';
 
 interface StickyNote {
   id: string;
@@ -14,30 +15,51 @@ interface StickyNote {
   color: string;
 }
 
+interface Connection {
+  id: string;
+  fromNoteId: string;
+  toNoteId: string;
+  label?: string;
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+}
+
 interface Snapshot {
   id: string;
   timestamp: number;
   notes: StickyNote[];
+  connections: Connection[];
 }
 
 const COLORS = ['#FFF59D', '#FFCCBC', '#B2DFDB', '#E1BEE7', '#C5CAE9', '#FFAB91'];
 
 export default function StickyNotesBoard() {
   const [notes, setNotes] = useState<StickyNote[]>([]);
+  const [connections, setConnections] = useState<Connection[]>([]);
   const [dragging, setDragging] = useState<string | null>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [editCount, setEditCount] = useState(0);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [connectMode, setConnectMode] = useState(false);
+  const [connectFrom, setConnectFrom] = useState<string | null>(null);
+  const [tempLine, setTempLine] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
+  const [editingConnectionId, setEditingConnectionId] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const EDITS_PER_SNAPSHOT = 5;
 
-  // Load notes and snapshots from localStorage on mount
+  // Load notes, connections, and snapshots from localStorage on mount
   useEffect(() => {
     const saved = localStorage.getItem('stickyNotes');
     if (saved) {
       setNotes(JSON.parse(saved));
+    }
+    const savedConnections = localStorage.getItem('stickyConnections');
+    if (savedConnections) {
+      setConnections(JSON.parse(savedConnections));
     }
     const savedSnapshots = localStorage.getItem('stickyNotesSnapshots');
     if (savedSnapshots) {
@@ -52,6 +74,11 @@ export default function StickyNotesBoard() {
     }
   }, [notes]);
 
+  // Save connections to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem('stickyConnections', JSON.stringify(connections));
+  }, [connections]);
+
   // Save snapshots to localStorage whenever they change
   useEffect(() => {
     if (snapshots.length > 0) {
@@ -64,7 +91,8 @@ export default function StickyNotesBoard() {
     const newSnapshot: Snapshot = {
       id: Date.now().toString(),
       timestamp: Date.now(),
-      notes: JSON.parse(JSON.stringify(notes)) // Deep copy
+      notes: JSON.parse(JSON.stringify(notes)), // Deep copy
+      connections: JSON.parse(JSON.stringify(connections)) // Deep copy
     };
     setSnapshots([newSnapshot, ...snapshots]);
   };
@@ -80,7 +108,7 @@ export default function StickyNotesBoard() {
   };
 
   const createNote = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.target === canvasRef.current) {
+    if (e.target === canvasRef.current && !connectMode) {
       const newNote: StickyNote = {
         id: Date.now().toString(),
         content: 'Double click to edit',
@@ -95,6 +123,44 @@ export default function StickyNotesBoard() {
 
   const handleMouseDown = (e: React.MouseEvent, noteId: string) => {
     if (editingId === noteId) return;
+    
+    if (connectMode) {
+      if (!connectFrom) {
+        // Start connection from this note
+        setConnectFrom(noteId);
+        const note = notes.find(n => n.id === noteId);
+        if (note) {
+          setTempLine({
+            x1: note.x + 100,
+            y1: note.y + 75,
+            x2: e.clientX,
+            y2: e.clientY
+          });
+        }
+      } else if (connectFrom !== noteId) {
+        // Complete connection to this note
+        const fromNote = notes.find(n => n.id === connectFrom);
+        const toNote = notes.find(n => n.id === noteId);
+        if (fromNote && toNote) {
+          const newConnection: Connection = {
+            id: Date.now().toString(),
+            fromNoteId: connectFrom,
+            toNoteId: noteId,
+            fromX: fromNote.x + 100,
+            fromY: fromNote.y + 75,
+            toX: toNote.x + 100,
+            toY: toNote.y + 75
+          };
+          setConnections([...connections, newConnection]);
+          trackEdit();
+        }
+        setConnectFrom(null);
+        setTempLine(null);
+        setConnectMode(false);
+      }
+      return;
+    }
+    
     setDragging(noteId);
     const note = notes.find(n => n.id === noteId);
     if (note) {
@@ -106,12 +172,34 @@ export default function StickyNotesBoard() {
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
+    if (tempLine && connectFrom) {
+      setTempLine({
+        ...tempLine,
+        x2: e.clientX,
+        y2: e.clientY
+      });
+    }
+    
     if (dragging) {
+      const newX = e.clientX - dragOffset.x;
+      const newY = e.clientY - dragOffset.y;
+      
       setNotes(notes.map(note =>
         note.id === dragging
-          ? { ...note, x: e.clientX - dragOffset.x, y: e.clientY - dragOffset.y }
+          ? { ...note, x: newX, y: newY }
           : note
       ));
+      
+      // Update connections attached to this note
+      setConnections(connections.map(conn => {
+        if (conn.fromNoteId === dragging) {
+          return { ...conn, fromX: newX + 100, fromY: newY + 75 };
+        }
+        if (conn.toNoteId === dragging) {
+          return { ...conn, toX: newX + 100, toY: newY + 75 };
+        }
+        return conn;
+      }));
     }
   };
 
@@ -121,7 +209,22 @@ export default function StickyNotesBoard() {
 
   const deleteNote = (id: string) => {
     setNotes(notes.filter(note => note.id !== id));
+    // Also delete connections attached to this note
+    setConnections(connections.filter(conn => 
+      conn.fromNoteId !== id && conn.toNoteId !== id
+    ));
     trackEdit();
+  };
+
+  const deleteConnection = (id: string) => {
+    setConnections(connections.filter(conn => conn.id !== id));
+    trackEdit();
+  };
+
+  const updateConnectionLabel = (id: string, label: string) => {
+    setConnections(connections.map(conn =>
+      conn.id === id ? { ...conn, label } : conn
+    ));
   };
 
   const updateContent = (id: string, content: string) => {
@@ -182,6 +285,7 @@ export default function StickyNotesBoard() {
 
   const restoreSnapshot = (snapshot: Snapshot) => {
     setNotes(JSON.parse(JSON.stringify(snapshot.notes)));
+    setConnections(JSON.parse(JSON.stringify(snapshot.connections || [])));
     setHistoryOpen(false);
     setEditCount(0);
   };
@@ -193,6 +297,24 @@ export default function StickyNotesBoard() {
 
   return (
     <>
+      {/* Connect Mode Button */}
+      <Fab
+        color={connectMode ? 'primary' : 'default'}
+        onClick={() => {
+          setConnectMode(!connectMode);
+          setConnectFrom(null);
+          setTempLine(null);
+        }}
+        sx={{
+          position: 'fixed',
+          bottom: 16,
+          right: 16,
+          zIndex: 1000
+        }}
+      >
+        <TimelineIcon />
+      </Fab>
+
       {/* History Button */}
       <IconButton
         onClick={() => setHistoryOpen(true)}
@@ -227,6 +349,27 @@ export default function StickyNotesBoard() {
       >
         Edits until snapshot: {EDITS_PER_SNAPSHOT - editCount}
       </Box>
+
+      {/* Connect Mode Indicator */}
+      {connectMode && (
+        <Box
+          sx={{
+            position: 'fixed',
+            top: 16,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            backgroundColor: '#1976d2',
+            color: 'white',
+            padding: '8px 16px',
+            borderRadius: 1,
+            boxShadow: 2,
+            zIndex: 1000,
+            fontSize: '14px'
+          }}
+        >
+          {connectFrom ? 'Click another note to connect' : 'Click a note to start connection'}
+        </Box>
+      )}
 
       {/* History Drawer */}
       <Drawer
@@ -296,15 +439,124 @@ export default function StickyNotesBoard() {
           backgroundColor: '#f5f5f5',
           position: 'relative',
           overflow: 'hidden',
-          cursor: 'crosshair'
+          cursor: connectMode ? 'crosshair' : 'default'
         }}
       >
+        {/* SVG for connections */}
+        <svg
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            pointerEvents: 'none',
+            zIndex: 1
+          }}
+        >
+          {/* Render existing connections */}
+          {connections.map(conn => {
+            const midX = (conn.fromX + conn.toX) / 2;
+            const midY = (conn.fromY + conn.toY) / 2;
+            
+            return (
+              <g key={conn.id}>
+                <defs>
+                  <marker
+                    id={`arrowhead-${conn.id}`}
+                    markerWidth="10"
+                    markerHeight="10"
+                    refX="9"
+                    refY="3"
+                    orient="auto"
+                  >
+                    <polygon points="0 0, 10 3, 0 6" fill="#333" />
+                  </marker>
+                </defs>
+                <line
+                  x1={conn.fromX}
+                  y1={conn.fromY}
+                  x2={conn.toX}
+                  y2={conn.toY}
+                  stroke="#333"
+                  strokeWidth="2"
+                  markerEnd={`url(#arrowhead-${conn.id})`}
+                  style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (window.confirm('Delete this connection?')) {
+                      deleteConnection(conn.id);
+                    }
+                  }}
+                />
+                {/* Label background and text */}
+                {(conn.label || editingConnectionId === conn.id) && (
+                  <foreignObject
+                    x={midX - 50}
+                    y={midY - 15}
+                    width="100"
+                    height="30"
+                    style={{ pointerEvents: 'auto' }}
+                  >
+                    <Box
+                      sx={{
+                        backgroundColor: 'white',
+                        border: '1px solid #ccc',
+                        borderRadius: 1,
+                        padding: '2px 6px',
+                        fontSize: '12px',
+                        textAlign: 'center'
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingConnectionId(conn.id);
+                      }}
+                    >
+                      {editingConnectionId === conn.id ? (
+                        <input
+                          autoFocus
+                          type="text"
+                          value={conn.label || ''}
+                          onChange={(e) => updateConnectionLabel(conn.id, e.target.value)}
+                          onBlur={() => setEditingConnectionId(null)}
+                          style={{
+                            width: '100%',
+                            border: 'none',
+                            outline: 'none',
+                            fontSize: '12px',
+                            textAlign: 'center',
+                            backgroundColor: 'transparent'
+                          }}
+                        />
+                      ) : (
+                        conn.label || 'Click to label'
+                      )}
+                    </Box>
+                  </foreignObject>
+                )}
+              </g>
+            );
+          })}
+          
+          {/* Render temporary line while connecting */}
+          {tempLine && (
+            <line
+              x1={tempLine.x1}
+              y1={tempLine.y1}
+              x2={tempLine.x2}
+              y2={tempLine.y2}
+              stroke="#1976d2"
+              strokeWidth="2"
+              strokeDasharray="5,5"
+            />
+          )}
+        </svg>
       {notes.map(note => (
         <Card
           key={note.id}
           id={`note-${note.id}`}
           onMouseDown={(e) => handleMouseDown(e, note.id)}
-          onDoubleClick={() => setEditingId(note.id)}
+          onDoubleClick={() => !connectMode && setEditingId(note.id)}
           sx={{
             position: 'absolute',
             left: note.x,
@@ -312,8 +564,10 @@ export default function StickyNotesBoard() {
             width: 200,
             minHeight: 150,
             backgroundColor: note.color,
-            cursor: dragging === note.id ? 'grabbing' : 'grab',
-            boxShadow: 3,
+            cursor: connectMode ? 'pointer' : (dragging === note.id ? 'grabbing' : 'grab'),
+            boxShadow: connectFrom === note.id ? 6 : 3,
+            border: connectFrom === note.id ? '3px solid #1976d2' : 'none',
+            zIndex: 10,
             '&:hover': {
               boxShadow: 6
             }
@@ -406,6 +660,20 @@ export default function StickyNotesBoard() {
     </>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
