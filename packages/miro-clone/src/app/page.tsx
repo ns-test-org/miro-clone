@@ -155,11 +155,13 @@ export default function StickyNotesBoard() {
     return parts.length > 0 ? parts : [{ type: 'text', content }];
   };
 
-  // Find note by content match
+  // Find note by content match (first line or full content)
   const findNoteByReference = (reference: string) => {
-    return notes.find(note => 
-      note.content.toLowerCase().includes(reference.toLowerCase())
-    );
+    return notes.find(note => {
+      const firstLine = note.content.split('\n')[0].trim();
+      return firstLine.toLowerCase() === reference.toLowerCase() ||
+             note.content.toLowerCase().trim() === reference.toLowerCase();
+    });
   };
 
   // Scroll to and highlight a note
@@ -348,7 +350,15 @@ export default function StickyNotesBoard() {
                 }}
               />
             ) : (
-              <Box sx={{ fontSize: '14px', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+              <Box 
+                sx={{ 
+                  fontSize: '14px', 
+                  whiteSpace: 'pre-wrap', 
+                  wordBreak: 'break-word',
+                  userSelect: 'none'
+                }}
+                onMouseDown={(e) => e.stopPropagation()}
+              >
                 {parseReferences(note.content).map((part, index) => {
                   if (part.type === 'reference') {
                     const referencedNote = findNoteByReference(part.content);
@@ -356,8 +366,13 @@ export default function StickyNotesBoard() {
                       <Box
                         key={index}
                         component="span"
+                        onMouseDown={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                        }}
                         onClick={(e) => {
                           e.stopPropagation();
+                          e.preventDefault();
                           if (referencedNote) {
                             scrollToNote(referencedNote.id);
                           }
@@ -367,8 +382,12 @@ export default function StickyNotesBoard() {
                           textDecoration: referencedNote ? 'underline' : 'none',
                           cursor: referencedNote ? 'pointer' : 'default',
                           fontWeight: 500,
+                          padding: '2px 4px',
+                          borderRadius: '3px',
+                          backgroundColor: referencedNote ? 'rgba(25, 118, 210, 0.08)' : 'transparent',
                           '&:hover': referencedNote ? {
-                            color: '#1565c0'
+                            color: '#1565c0',
+                            backgroundColor: 'rgba(25, 118, 210, 0.15)'
                           } : {}
                         }}
                       >
@@ -387,6 +406,8 @@ export default function StickyNotesBoard() {
     </>
   );
 }
+
+
 
 
 
