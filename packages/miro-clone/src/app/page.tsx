@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { Card, CardContent, IconButton, TextField, Box } from '@mui/material';
+import { Card, CardContent, IconButton, TextField, Box, Fab } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
+import DownloadIcon from '@mui/icons-material/Download';
 
 interface StickyNote {
   id: string;
@@ -93,21 +94,48 @@ export default function StickyNotesBoard() {
     setEditingId(noteId);
   };
 
+  const handleDownload = () => {
+    const dataStr = JSON.stringify(notes, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `sticky-notes-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
-    <Box
-      ref={canvasRef}
-      onClick={createNote}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      sx={{
-        width: '100vw',
-        height: '100vh',
-        backgroundColor: '#f5f5f5',
-        position: 'relative',
-        overflow: 'hidden',
-        cursor: 'crosshair'
-      }}
-    >
+    <>
+      <Fab
+        color="primary"
+        aria-label="download"
+        onClick={handleDownload}
+        sx={{
+          position: 'fixed',
+          bottom: 24,
+          right: 24,
+          zIndex: 1000
+        }}
+      >
+        <DownloadIcon />
+      </Fab>
+      <Box
+        ref={canvasRef}
+        onClick={createNote}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        sx={{
+          width: '100vw',
+          height: '100vh',
+          backgroundColor: '#f5f5f5',
+          position: 'relative',
+          overflow: 'hidden',
+          cursor: 'crosshair'
+        }}
+      >
       {notes.map(note => (
         <Card
           key={note.id}
@@ -165,9 +193,14 @@ export default function StickyNotesBoard() {
           </CardContent>
         </Card>
       ))}
-    </Box>
+      </Box>
+    </>
   );
 }
+
+
+
+
 
 
 

@@ -1,0 +1,23 @@
+# pnpm configuration for template workspace
+# These settings ensure all pnpm operations use the shared cache directories
+
+# Store directory for packages (shared across all projects)
+store-dir=/workspace/.pnpm-store
+
+# Cache directory for metadata and temporary files
+cache-dir=/workspace/.pnpm-cache
+
+# Use hard links when possible for better performance
+package-import-method=hardlink
+
+# Disable strict peer dependencies to avoid issues with monorepos
+strict-peer-dependencies=false
+
+# Use workspace protocol for local packages
+prefer-workspace-packages=true
+
+# Enable hoisting for better performance in monorepos
+hoist-pattern[]=*
+
+# Shamefully hoist to avoid issues with some packages
+shamefully-hoist=true
